@@ -1,5 +1,6 @@
 const BASE_URL = 'https://www.googleapis.com/youtube/v3';
 
+const apiKey = process.env.YOUTUBE_API_KEY;
 export interface YouTubeVideo {
   id: string;
   title: string;
@@ -29,7 +30,6 @@ export interface YouTubeChannelData {
 }
 
 export async function fetchYoutubeData(url: string): Promise<YouTubeChannelData | null> {
-  const apiKey = process.env.YOUTUBE_API_KEY;
 
   try {
     if (!apiKey) throw new Error('YOUTUBE_API_KEY is not defined');
