@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { fetchYoutubeData } from '@/services/youtube.service'; 
+import { fetchYoutubeData } from '@/services/youtube.service';
 import { fetchInstagramData } from '@/services/instagram.service';
+import { generatePersona } from '@/services/persona.service'; // <--- NEW IMPORT
 
 export async function POST(request: Request) {
   try {
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
     const results = {
       youtube: null as any,
       instagram: null as any,
+      persona: null as any, // <--- Placeholder for AI Result
       errors: [] as string[]
     };
 
@@ -24,7 +26,7 @@ export async function POST(request: Request) {
 
     // --- REAL YOUTUBE FETCH ---
     if (youtubeUrl) {
-      console.log('Fetching YouTube Data for:', youtubeUrl); // Debug Log
+      console.log('Fetching YouTube Data for:', youtubeUrl);
       tasks.push(
         fetchYoutubeData(youtubeUrl)
           .then(data => ({ type: 'youtube', data }))
@@ -33,26 +35,46 @@ export async function POST(request: Request) {
 
     // --- REAL INSTAGRAM FETCH ---
     if (instagramUrl) {
-      console.log('Fetching Instagram Data for:', instagramUrl); // Debug Log
+      console.log('Fetching Instagram Data for:', instagramUrl);
       tasks.push(
         fetchInstagramData(instagramUrl)
           .then(data => ({ type: 'instagram', data }))
       );
     }
 
+    // Wait for both fetchers to finish (Success or Fail)
     const outcomes = await Promise.allSettled(tasks);
 
+    // Process Fetch Results
     outcomes.forEach((outcome) => {
       if (outcome.status === 'fulfilled') {
-        const { type, data } = outcome.value as any;
-        if (type === 'youtube') results.youtube = data;
-        if (type === 'instagram') results.instagram = data;
+        // "outcome.value" is the object we returned in the .then() above
+        const result = outcome.value as any; 
+        
+        if (result.type === 'youtube') {
+             results.youtube = result.data;
+        }
+        if (result.type === 'instagram') {
+             results.instagram = result.data;
+        }
       } else {
         console.error('Analysis failed:', outcome.reason);
-        results.errors.push(outcome.reason?.message || 'Unknown error');
+        results.errors.push(outcome.reason?.message || 'Unknown fetch error');
       }
     });
 
+    // --- NEW STEP: GENERATE AI PERSONA ---
+    // We pass whatever data we successfully got. The AI service handles nulls.
+    try {
+        console.log('Generating AI Persona...');
+        results.persona = await generatePersona(results.youtube, results.instagram);
+    } catch (aiError) {
+        console.error('AI Generation failed:', aiError);
+        // We don't crash the whole app if AI fails, just log it.
+        results.errors.push('AI Persona generation failed');
+    }
+
+    // Return the bundle
     return NextResponse.json({
       success: true,
       data: results
