@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+// IMPORT THE NEW CHART COMPONENT
+import TrendChart from '@/components/TrendChart';
 
 // Helper for large numbers
 const formatNumber = (num: number | string | undefined) => {
@@ -141,12 +143,9 @@ export default function Dashboard() {
           
           {/* --- MONETIZATION CARD (Interactive) --- */}
           <div className="relative group bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col justify-between overflow-hidden hover:border-green-500/30 transition-all cursor-default">
-             
-             {/* Default View (Visible initially) */}
              <div className="flex flex-col h-full justify-between transition duration-300 group-hover:blur-sm group-hover:opacity-30">
                 <div className="flex justify-between items-start">
                    <span className="text-gray-400 text-sm font-medium">Monetization</span>
-                   {/* Dollar Icon */}
                    <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center text-green-400">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -154,20 +153,16 @@ export default function Dashboard() {
                    </div>
                 </div>
                 <div>
-                   {/* Blurred Fake Numbers to tease data */}
                    <div className="text-3xl font-bold text-gray-500 blur-[5px] select-none">$12,450</div>
                    <div className="text-xs text-gray-600 mt-1 blur-[2px]">Est. Monthly Revenue</div>
                 </div>
              </div>
-
-             {/* Hover Overlay */}
              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300 transform scale-95 group-hover:scale-100">
                 <span className="text-3xl mb-2">💸</span>
                 <span className="text-green-400 font-bold text-sm uppercase tracking-wide">Monetization</span>
                 <span className="text-white text-xs mt-1">Coming Soon</span>
              </div>
           </div>
-
         </section>
 
         {/* 3. SWOT ANALYSIS */}
@@ -306,22 +301,26 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {activeTab === 'youtube' && youtube?.recentVideos && (
-                <div>
-                   <h4 className="text-gray-400 text-xs font-bold uppercase mb-4">📈 Last 5 Uploads Trend</h4>
-                   <div className="h-32 flex items-end gap-2">
-                      {youtube.recentVideos.slice(0, 5).reverse().map((vid: any, i: number) => {
-                        const maxViews = Math.max(...youtube.recentVideos.map((v:any) => Number(v.viewCount)));
-                        const height = (Number(vid.viewCount) / maxViews) * 100;
-                        return (
-                          <div key={i} className="flex-1 flex flex-col justify-end group relative">
-                             <div className="w-full bg-indigo-500/20 rounded-t-md transition-all group-hover:bg-indigo-500" style={{ height: `${height}%` }}></div>
-                          </div>
-                        )
-                      })}
+              {/* DYNAMIC PERFORMANCE TREND CHART */}
+              {(activeTab === 'youtube' && youtube?.recentVideos) || (activeTab === 'instagram' && instagram?.recentPosts) ? (
+                <div className="mt-8 pt-8 border-t border-white/5">
+                   <div className="flex items-center justify-between mb-2">
+                     <h4 className="text-gray-400 text-xs font-bold uppercase">
+                       📈 Performance Trend (Last 5 {activeTab === 'youtube' ? 'Uploads' : 'Posts'})
+                     </h4>
+                     <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span className={`w-2 h-2 rounded-full ${activeTab === 'youtube' ? 'bg-red-500' : 'bg-pink-500'}`}></span>
+                        {activeTab === 'youtube' ? 'Views' : 'Likes'}
+                     </div>
                    </div>
+                   
+                   <TrendChart 
+                     data={activeTab === 'youtube' ? youtube.recentVideos : instagram.recentPosts} 
+                     platform={activeTab} 
+                   />
                 </div>
-              )}
+              ) : null}
+
             </div>
           </div>
         </section>
