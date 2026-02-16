@@ -8,7 +8,7 @@ import TrendChart from '@/components/TrendChart';
 const formatNumber = (num: number | string | undefined) => {
   if (!num) return '0';
   const n = Number(num);
-  if (isNaN(n)) return '0'; // Handle bad numbers
+  if (isNaN(n)) return '0';
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
   if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
   return n.toLocaleString();
@@ -19,23 +19,28 @@ export default function Dashboard() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  // New State for the Refresh Button
+  const [refreshing, setRefreshing] = useState(false);
 
   // --- UI STATE ---
   const [activeTab, setActiveTab] = useState<'youtube' | 'instagram'>('youtube');
   const [filterType, setFilterType] = useState<'views' | 'recent' | 'comments'>('views');
 
+  // Helper to extract URLs from params
+  const ytUrl = searchParams.get('yt');
+  const igUrl = searchParams.get('ig');
+
   useEffect(() => {
     const fetchData = async () => {
-      const yt = searchParams.get('yt');
-      const ig = searchParams.get('ig');
-      if (!yt && !ig) { setError('No profile links provided.'); setLoading(false); return; }
+      if (!ytUrl && !igUrl) { setError('No profile links provided.'); setLoading(false); return; }
       
       try {
-        // Pass forceRefresh=true if you want to bypass the DB cache while testing
         const res = await fetch('/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ youtubeUrl: yt, instagramUrl: ig }),
+          // Default fetch: forceRefresh is false (uses DB cache)
+          body: JSON.stringify({ youtubeUrl: ytUrl, instagramUrl: igUrl, forceRefresh: false }),
         });
         const result = await res.json();
         if (!result.success) throw new Error(result.error);
@@ -49,30 +54,39 @@ export default function Dashboard() {
       }
     };
     fetchData();
-  }, [searchParams]);
+  }, [ytUrl, igUrl]);
 
-  // --- DEBUG LOGGING ---
-  if (data) {
-    console.log("------------------------------------------------");
-    console.log("🖥️ [FRONTEND DEBUG] Full Data Object:", data);
-    console.log("🖥️ [FRONTEND DEBUG] YouTube Object:", data.youtube);
-    console.log("🖥️ [FRONTEND DEBUG] YouTube Recent Videos:", data.youtube?.recentVideos);
-    console.log("🖥️ [FRONTEND DEBUG] Is Videos Array?", Array.isArray(data.youtube?.recentVideos));
-    console.log("------------------------------------------------");
-  }
-  // ---------------------
+  // --- NEW: REFRESH HANDLER ---
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // FORCE REFRESH: Tells API to ignore DB and fetch fresh data
+        body: JSON.stringify({ youtubeUrl: ytUrl, instagramUrl: igUrl, forceRefresh: true }),
+      });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error);
+      
+      // Update UI with the fresh data immediately
+      setData(result.data);
+    } catch (err: any) {
+      alert(`Update Failed: ${err.message}`);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // --- CALCULATIONS ---
   const { youtube, instagram, persona } = data || {};
 
-  // SAFEGUARD: Ensure lists are arrays
   const ytVideos = Array.isArray(youtube?.recentVideos) ? youtube.recentVideos : [];
   const igPosts = Array.isArray(instagram?.recentPosts) ? instagram.recentPosts : [];
 
   const monthlyViews = useMemo(() => {
     let total = 0;
     if (ytVideos.length > 0) {
-      // Handle snake_case from DB or camelCase from API
       total += ytVideos.reduce((acc: number, vid: any) => acc + Number(vid.viewCount || vid.view_count || 0), 0);
     }
     if (igPosts.length > 0) {
@@ -133,13 +147,48 @@ export default function Dashboard() {
           </h1>
           <p className="text-gray-400 mt-1">Strategic Dashboard</p>
         </div>
-        <Link href="/" className="px-5 py-2 bg-white/10 hover:bg-white/20 rounded-full text-sm font-medium transition">
-          New Analysis
-        </Link>
+
+        {/* --- BUTTONS GROUP --- */}
+        <div className="flex gap-3">
+          {/* 1. GET LATEST INSIGHTS (The New Button) */}
+          <button 
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className={`px-5 py-2 rounded-full text-sm font-medium transition flex items-center gap-2 ${
+              refreshing 
+                ? 'bg-indigo-600/50 cursor-not-allowed text-indigo-200' 
+                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+            }`}
+          >
+            {refreshing ? (
+              <>
+                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Syncing...
+              </>
+            ) : (
+              <>
+                <span>⚡</span> Get Latest Insights
+              </>
+            )}
+          </button>
+
+          {/* 2. NEW ANALYSIS (Go Home) */}
+          <Link 
+            href="/" 
+            className="px-5 py-2 bg-white/10 hover:bg-white/20 rounded-full text-sm font-medium transition flex items-center"
+          >
+            Search Another
+          </Link>
+        </div>
       </header>
 
       <div className="max-w-7xl mx-auto space-y-8">
-
+        
+        {/* ... (The rest of your JSX remains exactly the same) ... */}
+        
         {/* 1. EXECUTIVE SUMMARY */}
         {persona && (
           <section className="bg-gradient-to-r from-violet-900/30 to-indigo-900/30 border border-indigo-500/30 p-6 md:p-8 rounded-3xl backdrop-blur-md">
@@ -165,7 +214,6 @@ export default function Dashboard() {
           <StatCard label="Engagement Rate" value={engagementRate} icon="⚡" subtext={persona?.engagement.behavior || 'Calculated score'} highlight />
           <StatCard label="Total Audience" value={formatNumber((Number(youtube?.statistics?.subscriberCount || 0) + Number(instagram?.followers || 0)))} icon="👥" subtext="Cross-platform reach" />
           
-          {/* --- MONETIZATION CARD --- */}
           <div className="relative group bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col justify-between overflow-hidden hover:border-green-500/30 transition-all cursor-default">
              <div className="flex flex-col h-full justify-between transition duration-300 group-hover:blur-sm group-hover:opacity-30">
                 <div className="flex justify-between items-start">
