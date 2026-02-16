@@ -32,15 +32,27 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function TrendChart({ data, platform }: TrendChartProps) {
+  // --- CRITICAL FIX: Handle undefined/null data ---
+  if (!data || !Array.isArray(data)) {
+    return (
+      <div className="w-full h-[250px] mt-4 flex items-center justify-center border border-white/5 rounded-xl bg-white/5">
+         <p className="text-gray-500 text-sm">Not enough data for trend chart</p>
+      </div>
+    );
+  }
+  // ------------------------------------------------
+
   // Transform raw data into chart-friendly format
-  // We reverse the array so the chart goes from Left (Oldest) -> Right (Newest)
   const chartData = data.slice(0, 5).reverse().map((item: any, index: number) => ({
-    name: index + 1, // X-Axis Label
-    value: platform === 'youtube' ? Number(item.viewCount) : Number(item.likes),
+    name: index + 1,
+    // Handle both potential DB structures (snake_case vs camelCase)
+    value: platform === 'youtube' 
+      ? Number(item.viewCount || item.view_count || 0) 
+      : Number(item.likes || 0),
     metric: platform === 'youtube' ? 'Views' : 'Likes',
   }));
 
-  const color = platform === 'youtube' ? '#ef4444' : '#ec4899'; // Red for YT, Pink for IG
+  const color = platform === 'youtube' ? '#ef4444' : '#ec4899';
 
   return (
     <div className="w-full h-[250px] mt-4">

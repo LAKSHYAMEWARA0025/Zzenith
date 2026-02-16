@@ -3,13 +3,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-// IMPORT THE NEW CHART COMPONENT
 import TrendChart from '@/components/TrendChart';
 
-// Helper for large numbers
 const formatNumber = (num: number | string | undefined) => {
   if (!num) return '0';
   const n = Number(num);
+  if (isNaN(n)) return '0'; // Handle bad numbers
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
   if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
   return n.toLocaleString();
@@ -32,6 +31,7 @@ export default function Dashboard() {
       if (!yt && !ig) { setError('No profile links provided.'); setLoading(false); return; }
       
       try {
+        // Pass forceRefresh=true if you want to bypass the DB cache while testing
         const res = await fetch('/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -51,19 +51,35 @@ export default function Dashboard() {
     fetchData();
   }, [searchParams]);
 
+  // --- DEBUG LOGGING ---
+  if (data) {
+    console.log("------------------------------------------------");
+    console.log("🖥️ [FRONTEND DEBUG] Full Data Object:", data);
+    console.log("🖥️ [FRONTEND DEBUG] YouTube Object:", data.youtube);
+    console.log("🖥️ [FRONTEND DEBUG] YouTube Recent Videos:", data.youtube?.recentVideos);
+    console.log("🖥️ [FRONTEND DEBUG] Is Videos Array?", Array.isArray(data.youtube?.recentVideos));
+    console.log("------------------------------------------------");
+  }
+  // ---------------------
+
   // --- CALCULATIONS ---
   const { youtube, instagram, persona } = data || {};
 
+  // SAFEGUARD: Ensure lists are arrays
+  const ytVideos = Array.isArray(youtube?.recentVideos) ? youtube.recentVideos : [];
+  const igPosts = Array.isArray(instagram?.recentPosts) ? instagram.recentPosts : [];
+
   const monthlyViews = useMemo(() => {
     let total = 0;
-    if (youtube?.recentVideos) {
-      total += youtube.recentVideos.reduce((acc: number, vid: any) => acc + Number(vid.viewCount), 0);
+    if (ytVideos.length > 0) {
+      // Handle snake_case from DB or camelCase from API
+      total += ytVideos.reduce((acc: number, vid: any) => acc + Number(vid.viewCount || vid.view_count || 0), 0);
     }
-    if (instagram?.recentPosts) {
-      total += instagram.recentPosts.reduce((acc: number, post: any) => acc + (post.likes * 10), 0);
+    if (igPosts.length > 0) {
+      total += igPosts.reduce((acc: number, post: any) => acc + (Number(post.likes || 0) * 10), 0);
     }
     return total;
-  }, [youtube, instagram]);
+  }, [ytVideos, igPosts]);
 
   const engagementRate = useMemo(() => {
     if (persona?.engagement?.rate) return persona.engagement.rate;
@@ -72,27 +88,35 @@ export default function Dashboard() {
   }, [persona, instagram]);
 
   const getFilteredContent = () => {
-    const source = activeTab === 'youtube' ? youtube?.recentVideos : instagram?.recentPosts;
+    const source = activeTab === 'youtube' ? ytVideos : igPosts;
     if (!source) return [];
 
     let sorted = [...source];
     if (filterType === 'views') {
-      sorted.sort((a, b) => (Number(b.viewCount || b.likes) - Number(a.viewCount || a.likes)));
+      sorted.sort((a, b) => {
+        const valA = Number(a.viewCount || a.view_count || a.likes || 0);
+        const valB = Number(b.viewCount || b.view_count || b.likes || 0);
+        return valB - valA;
+      });
     } else if (filterType === 'comments') {
-      sorted.sort((a, b) => (Number(b.commentCount || b.comments) - Number(a.commentCount || a.comments)));
+      sorted.sort((a, b) => {
+        const valA = Number(a.commentCount || a.comment_count || a.comments || 0);
+        const valB = Number(b.commentCount || b.comment_count || b.comments || 0);
+        return valB - valA;
+      });
     }
     return sorted.slice(0, 3);
   };
 
   const mostEngagingItem = useMemo(() => {
-    const source = activeTab === 'youtube' ? youtube?.recentVideos : instagram?.recentPosts;
+    const source = activeTab === 'youtube' ? ytVideos : igPosts;
     if (!source || source.length === 0) return null;
     return [...source].sort((a, b) => {
-      const engA = Number(a.likeCount || a.likes) + Number(a.commentCount || a.comments);
-      const engB = Number(b.likeCount || b.likes) + Number(b.commentCount || b.comments);
+      const engA = Number(a.likeCount || a.like_count || a.likes || 0) + Number(a.commentCount || a.comment_count || a.comments || 0);
+      const engB = Number(b.likeCount || b.like_count || b.likes || 0) + Number(b.commentCount || b.comment_count || b.comments || 0);
       return engB - engA;
     })[0];
-  }, [activeTab, youtube, instagram]);
+  }, [activeTab, ytVideos, igPosts]);
 
 
   if (loading) return <LoadingScreen />;
@@ -141,15 +165,13 @@ export default function Dashboard() {
           <StatCard label="Engagement Rate" value={engagementRate} icon="⚡" subtext={persona?.engagement.behavior || 'Calculated score'} highlight />
           <StatCard label="Total Audience" value={formatNumber((Number(youtube?.statistics?.subscriberCount || 0) + Number(instagram?.followers || 0)))} icon="👥" subtext="Cross-platform reach" />
           
-          {/* --- MONETIZATION CARD (Interactive) --- */}
+          {/* --- MONETIZATION CARD --- */}
           <div className="relative group bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col justify-between overflow-hidden hover:border-green-500/30 transition-all cursor-default">
              <div className="flex flex-col h-full justify-between transition duration-300 group-hover:blur-sm group-hover:opacity-30">
                 <div className="flex justify-between items-start">
                    <span className="text-gray-400 text-sm font-medium">Monetization</span>
                    <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center text-green-400">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                      </svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
                    </div>
                 </div>
                 <div>
@@ -230,12 +252,12 @@ export default function Dashboard() {
               {mostEngagingItem ? (
                  activeTab === 'youtube' ? (
                    <div className="group relative aspect-[9/16] md:aspect-square w-full rounded-2xl overflow-hidden border border-white/10">
-                     <img src={mostEngagingItem.thumbnail} alt="Hero" className="absolute inset-0 w-full h-full object-cover transition duration-500 group-hover:scale-105" />
+                     <img src={mostEngagingItem.thumbnail || mostEngagingItem.displayUrl} alt="Hero" className="absolute inset-0 w-full h-full object-cover transition duration-500 group-hover:scale-105" />
                      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent flex flex-col justify-end p-6">
                         <h3 className="text-white font-bold line-clamp-2 mb-2">{mostEngagingItem.title}</h3>
                         <div className="flex gap-4 text-sm font-medium">
-                          <span>❤️ {formatNumber(mostEngagingItem.likeCount)}</span>
-                          <span>💬 {formatNumber(mostEngagingItem.commentCount)}</span>
+                          <span>❤️ {formatNumber(mostEngagingItem.likeCount || mostEngagingItem.like_count)}</span>
+                          <span>💬 {formatNumber(mostEngagingItem.commentCount || mostEngagingItem.comment_count)}</span>
                         </div>
                      </div>
                    </div>
@@ -247,12 +269,8 @@ export default function Dashboard() {
                          </div>
                          <div className="bg-white/10 px-3 py-1 rounded-full text-xs font-bold text-gray-300 group-hover:bg-pink-500 group-hover:text-white transition">View Post ↗</div>
                       </div>
-                      
                       <div className="space-y-4">
-                        <p className="text-gray-300 text-lg leading-snug line-clamp-4 font-light italic">
-                          "{mostEngagingItem.caption || 'Check out this post on Instagram'}"
-                        </p>
-                        
+                        <p className="text-gray-300 text-lg leading-snug line-clamp-4 font-light italic">"{mostEngagingItem.caption || 'Post'}"</p>
                         <div className="flex gap-6 border-t border-white/10 pt-4">
                           <div>
                              <div className="text-xs text-gray-500 uppercase font-bold">Likes</div>
@@ -289,7 +307,7 @@ export default function Dashboard() {
                         <h5 className="text-sm font-medium text-gray-200 truncate">{item.title || item.caption || 'Post'}</h5>
                         <div className="flex gap-3 mt-1 text-xs text-gray-400">
                            {activeTab === 'youtube' ? (
-                             <><span>👀 {formatNumber(item.viewCount)}</span><span>❤️ {formatNumber(item.likeCount)}</span></>
+                             <><span>👀 {formatNumber(item.viewCount || item.view_count)}</span><span>❤️ {formatNumber(item.likeCount || item.like_count)}</span></>
                            ) : (
                              <><span>❤️ {formatNumber(item.likes)}</span><span>💬 {formatNumber(item.comments)}</span></>
                            )}
@@ -302,7 +320,7 @@ export default function Dashboard() {
               </div>
 
               {/* DYNAMIC PERFORMANCE TREND CHART */}
-              {(activeTab === 'youtube' && youtube?.recentVideos) || (activeTab === 'instagram' && instagram?.recentPosts) ? (
+              {(ytVideos.length > 0 || igPosts.length > 0) ? (
                 <div className="mt-8 pt-8 border-t border-white/5">
                    <div className="flex items-center justify-between mb-2">
                      <h4 className="text-gray-400 text-xs font-bold uppercase">
@@ -315,7 +333,7 @@ export default function Dashboard() {
                    </div>
                    
                    <TrendChart 
-                     data={activeTab === 'youtube' ? youtube.recentVideos : instagram.recentPosts} 
+                     data={activeTab === 'youtube' ? ytVideos : igPosts} 
                      platform={activeTab} 
                    />
                 </div>
